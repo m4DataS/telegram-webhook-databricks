@@ -1,3 +1,4 @@
 fastapi
 uvicorn
 requests
+httpx==1.2.3
