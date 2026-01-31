@@ -10,7 +10,17 @@ JOB_NAME = os.getenv("JOB_NAME")
 @app.post("/telegram-webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
-    message_text = data["message"]["text"]
+    
+    # Telegram user messages vs channel posts
+    if "message" in data:
+        message_text = data["message"]["text"]
+    elif "channel_post" in data:
+        message_text = data["channel_post"]["text"]
+    else:
+        # Ignore unknown updates
+        return {"ok": True, "ignored": True}
+
+    print("Received message:", message_text)
 
     # Trigger Databricks job
     jobs_list = requests.get(
