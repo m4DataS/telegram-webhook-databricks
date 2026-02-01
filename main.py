@@ -236,42 +236,30 @@ JOB_NAME = os.getenv("JOB_NAME")
 async def telegram_webhook(req: Request):
     data = await req.json()
 
-    # Telegram message may be in 'message' or 'channel_post'
-    message_obj = data.get("message") or data.get("channel_post")
-    if not message_obj:
-        return {"ok": True, "note": "No message found"}
+    # Log the incoming payload for debugging
+    print("🔔 Incoming Telegram JSON:", json.dumps(data))
 
-    # Extract text safely
-    message_text = message_obj.get("text", "")
-    if not message_text:
-        return {"ok": True, "note": "No text in message"}
-
-    print("🔔 Telegram webhook received channel message:", message_text)
-
-    # Safely encode the message for Databricks notebook param
-    safe_message = json.dumps(message_text, ensure_ascii=False)
+    # Stringify the ENTIRE payload to pass to Databricks
+    full_payload_string = json.dumps(data, ensure_ascii=False)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        # Get job list
+        # Get job list (Consider hardcoding JOB_ID to speed this up!)
         jobs_list_resp = await client.get(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/list",
             headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"}
         )
         jobs_list = jobs_list_resp.json()
-        job_id = next(
-            job["job_id"]
-            for job in jobs_list.get("jobs", [])
-            if job["settings"]["name"] == JOB_NAME
-        )
+        job_id = next(job["job_id"] for job in jobs_list.get("jobs", []) if job["settings"]["name"] == JOB_NAME)
 
-        # Run Databricks job passing the message safely
-        await client.post(
+        # Trigger Job
+        resp = await client.post(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/run-now",
             headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
             json={
                 "job_id": job_id,
-                "notebook_params": {"telegram_message": safe_message}
+                "notebook_params": {"telegram_message": full_payload_string} # Sending everything here
             }
         )
+        print(f"🚀 Databricks Response: {resp.status_code}")
 
-    return {"ok": True, "note": "Databricks job triggered, message safely passed"}
+    return {"ok": True}
