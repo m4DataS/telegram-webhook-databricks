@@ -237,6 +237,9 @@ JOB_NAME = os.getenv("JOB_NAME")
 async def telegram_webhook(req: Request):
     data = await req.json()
 
+    # This will show the pretty-printed JSON in your Railway logs
+    print("🔔 Received Telegram JSON:", json.dumps(data, indent=2, ensure_ascii=False))
+    
     # 1. Convert dict to JSON string
     json_str = json.dumps(data, ensure_ascii=False)
     
