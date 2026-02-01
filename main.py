@@ -225,6 +225,7 @@ from fastapi import FastAPI, Request
 import os
 import httpx
 import json
+import base64
 
 app = FastAPI()
 
@@ -236,12 +237,15 @@ JOB_NAME = os.getenv("JOB_NAME")
 async def telegram_webhook(req: Request):
     data = await req.json()
 
-    # Log the incoming payload for debugging
-    print("🔔 Incoming Telegram JSON:", json.dumps(data))
+    # 1. Convert dict to JSON string
+    json_str = json.dumps(data, ensure_ascii=False)
+    
+    # 2. Encode to Base64 (This turns "données" into safe ASCII like "ZG9ubsOpZXM=")
+    encoded_param = base64.b64encode(json_str.encode("utf-8")).decode("ascii")
+
 
     # 1. Stringify the data
     # We must ensure this is a single string for the Databricks parameter
-    payload_string = json.dumps(data, ensure_ascii=False)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         # Get job list (Consider hardcoding JOB_ID to speed this up!)
@@ -255,14 +259,11 @@ async def telegram_webhook(req: Request):
         # 2. Trigger Job
         response = await client.post(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/run-now",
-            headers={
-                "Authorization": f"Bearer {DATABRICKS_TOKEN}",
-                "Content-Type": "application/json"
-            },
+            headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
             json={
-                "job_id": int(job_id), # Ensure this is an integer
+                "job_id": int(job_id),
                 "notebook_params": {
-                    "telegram_message": payload_string
+                    "telegram_message": encoded_param # Send the encoded string
                 }
             }
         )
