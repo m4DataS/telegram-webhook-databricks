@@ -239,8 +239,9 @@ async def telegram_webhook(req: Request):
     # Log the incoming payload for debugging
     print("🔔 Incoming Telegram JSON:", json.dumps(data))
 
-    # Stringify the ENTIRE payload to pass to Databricks
-    full_payload_string = json.dumps(data, ensure_ascii=False)
+    # 1. Stringify the data
+    # We must ensure this is a single string for the Databricks parameter
+    payload_string = json.dumps(data, ensure_ascii=False)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         # Get job list (Consider hardcoding JOB_ID to speed this up!)
@@ -251,15 +252,25 @@ async def telegram_webhook(req: Request):
         jobs_list = jobs_list_resp.json()
         job_id = next(job["job_id"] for job in jobs_list.get("jobs", []) if job["settings"]["name"] == JOB_NAME)
 
-        # Trigger Job
-        resp = await client.post(
+        # 2. Trigger Job
+        response = await client.post(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/run-now",
-            headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
+            headers={
+                "Authorization": f"Bearer {DATABRICKS_TOKEN}",
+                "Content-Type": "application/json"
+            },
             json={
-                "job_id": job_id,
-                "notebook_params": {"telegram_message": full_payload_string} # Sending everything here
+                "job_id": int(job_id), # Ensure this is an integer
+                "notebook_params": {
+                    "telegram_message": payload_string
+                }
             }
         )
-        print(f"🚀 Databricks Response: {resp.status_code}")
+        
+        # This will print WHY it failed (e.g., "Parameter 'telegram_message' is too long")
+        if response.status_code != 200:
+            print(f"❌ Databricks Error Detail: {response.text}")
+        else:
+            print(f"🚀 Success! Run ID: {response.json().get('run_id')}")
 
     return {"ok": True}
